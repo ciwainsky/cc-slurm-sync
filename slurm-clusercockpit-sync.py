@@ -239,6 +239,8 @@ class SlurmSync:
         i = 0
         num_acc = 0
         for node in nodelist:
+
+            nodeType = re.sub(r'\d+', '', node)
             # begin dict
             resources = {'hostname' : node.strip()}
 
@@ -250,7 +252,13 @@ class SlurmSync:
             for socket,cores in sockets.items():
                 for cid, state in cores['cores'].items():
                     if state == 'allocated':
-                        hwthreads.append(int(cid) + int(socket) * self.config['nodes']['cores_per_socket'])
+                        try:
+                            hwthreads.append(int(cid) + int(socket) * self.config['nodes']['cores_per_socket'])
+                        except KeyError:
+                            try:
+                                hwthreads.append(int(cid) + int(socket) * self.config['nodes'][nodeType]['cores_per_socket'])
+                            except KeyError:
+                                print ("Config Error: no \'nodes\'->\'cores_per_socket\'")
 
             resources.update({"hwthreads": hwthreads})
 
