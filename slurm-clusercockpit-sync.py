@@ -339,9 +339,13 @@ class SlurmSync:
         self.ccapi.stopJob(data)
 
     def _convertNodelist(self, nodelist):
+        print ("Node Regex as Array",self.config['node_regex'])
         # Use slurm to convert a nodelist with ranges into a comma separated list of unique nodes
-        if re.search(self.config['node_regex'], nodelist):
+#        if re.search(self.config['node_regex'][0], nodelist):
+        # To allow for multiple regex parse, using this line
+        if any (re.search(expr,nodelist) for expr in self.config['node_regex']):
             command = "%s show hostname %s | paste -d, -s" % (self.config['slurm']['scontrol'], nodelist)
+            print ("CMD = ",command)
             retval = self._exec(command).split(',')
             return retval
         else:
