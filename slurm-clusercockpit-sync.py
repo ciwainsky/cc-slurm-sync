@@ -13,12 +13,14 @@ import subprocess
 import json
 import requests
 import re
+import sys
 
 class CCApi:
     config = {}
     apiurl = ''
     apikey = ''
     headers = {}
+    debug = ''
 
     def __init__(self, config, debug=False):
         self.config = config
@@ -27,6 +29,7 @@ class CCApi:
         self.headers = { 'accept': 'application/ld+json', 
                     'Content-Type': 'application/json',
                     'Authorization': 'Bearer %s' % self.config['cc-backend']['apikey']}
+        self.debug=debug
 
     def startJob(self, data):
         url = self.apiurl+"jobs/start_job/"
@@ -34,8 +37,12 @@ class CCApi:
         if r.status_code == 201:
             return r.json()
         else:
-            print(data)
-            print(r)
+            print("StartJob Fail: ",r, "on ",data)
+            if self.debug:
+                sys.exit()
+#            print("Error: ",r.error)
+#            print(data)
+#            print(r)
             return False
 
     def stopJob(self, data):
@@ -46,6 +53,8 @@ class CCApi:
         else:
             print(data)
             print(r)
+            if self.debug:
+                sys.exit()
             return False
 
     def getJobs(self, filter_running=True):
@@ -168,7 +177,10 @@ class SlurmSync:
     def _ccStartJob(self, job):
         print("INFO: Crate job %s, user %s, partition %s, name %s" % (job['job_id'], job['user_name'], job['partition'], job['name']))
         nodelist = self._convertNodelist(job['job_resources']['nodes'])
-
+        if not nodelist:
+            # Short Circuit if the node list aka ressource-list is empty
+            print("INFO: Empty nodelist [ %s ] for job %s" % (job['job_resources']['nodes'],job['job_id']))
+            return None
         # Exclusive job?
         if job['shared'] == "none":
             exclusive = 1
@@ -234,7 +246,7 @@ class SlurmSync:
 
         # is this part of an array job?
         if job['array_job_id']['set'] and job['array_job_id']['number'] > 0:
-            data.update({"arrayJobId" : job['array_job_id']})
+            data.update({"arrayJobId" : job['array_job_id']['number']})
 
         i = 0
         num_acc = 0
@@ -278,7 +290,7 @@ class SlurmSync:
         data.update({"numAcc" : num_acc})
 
         if self.debug:
-            print(data)
+            print("DEBUG: ",data)
 
         self.ccapi.startJob(data)
         
@@ -339,16 +351,18 @@ class SlurmSync:
         self.ccapi.stopJob(data)
 
     def _convertNodelist(self, nodelist):
-        print ("Node Regex as Array",self.config['node_regex'])
         # Use slurm to convert a nodelist with ranges into a comma separated list of unique nodes
 #        if re.search(self.config['node_regex'][0], nodelist):
         # To allow for multiple regex parse, using this line
         if any (re.search(expr,nodelist) for expr in self.config['node_regex']):
-            command = "%s show hostname %s | paste -d, -s" % (self.config['slurm']['scontrol'], nodelist)
-            print ("CMD = ",command)
+            command = "%s show hostname %s | /usr/bin/paste -d, -s" % (self.config['slurm']['scontrol'], nodelist)
             retval = self._exec(command).split(',')
+            if not retval:
+                print ("ERROR: Nodelist ",nodelist," converts to empty")
             return retval
         else:
+            if self.debug:
+                print("DEBUG: hosts ",nodelist," dropped due to negative regex match")
             return []
 
 
